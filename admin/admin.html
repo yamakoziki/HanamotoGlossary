@@ -1,0 +1,1759 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>用語集管理ツール</title>
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --primary: #1a56db;
+      --bg: #f3f4f6;
+      --card: #fff;
+      --border: #e5e7eb;
+      --text: #111827;
+      --muted: #6b7280;
+      --radius: 10px;
+    }
+    body { font-family: 'Hiragino Kaku Gothic ProN','Noto Sans JP','Meiryo',sans-serif; font-size: 16px; line-height: 1.6; color: var(--text); background: var(--bg); }
+
+    /* Site header wrapper (sticky) */
+    .site-header { position: sticky; top: 0; z-index: 100; }
+
+    /* Header row 1: title + lang buttons */
+    header { background: var(--primary); color: white; padding: 10px 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
+    .header-inner { max-width: 720px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    header h1 { font-size: 1.15rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .lang-bar { display: flex; gap: 6px; flex-shrink: 0; }
+    .lang-btn { padding: 6px 12px; border-radius: 999px; border: 2px solid rgba(255,255,255,0.6); background: transparent; color: white; font-size: 0.82rem; font-weight: 600; cursor: pointer; min-height: 36px; line-height: 1; transition: background 0.2s; }
+    .lang-btn.active { background: white; color: var(--primary); border-color: white; }
+    .lang-btn:hover:not(.active) { background: rgba(255,255,255,0.15); }
+    .lang-btn .short-text { display: none; }
+
+    /* Controls bar row 2: filter + search (sticky) */
+    .controls-bar { background: white; border-bottom: 1px solid var(--border); padding: 8px 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+    .controls-inner { max-width: 720px; margin: 0 auto; display: flex; gap: 8px; align-items: center; }
+    .filter-group { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+    .filter-all-btn { padding: 7px 14px; border-radius: 6px; border: 1px solid var(--border); background: white; font-size: 0.9rem; cursor: pointer; min-height: 38px; white-space: nowrap; font-weight: 600; transition: all 0.15s; }
+    .filter-all-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+    .filter-all-btn:hover:not(.active) { border-color: var(--primary); color: var(--primary); }
+    #cat-select { padding: 7px 8px; border: 1px solid var(--border); border-radius: 6px; background: white; font-size: 0.9rem; cursor: pointer; min-height: 38px; color: var(--text); max-width: 140px; }
+    #cat-select:focus { outline: 2px solid var(--primary); outline-offset: 0; }
+    .search-box { position: relative; flex: 1; min-width: 0; }
+    .search-box input { width: 100%; padding: 7px 12px 7px 34px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.95rem; outline: none; transition: border-color 0.2s; min-height: 38px; background: white; }
+    .search-box input:focus { border-color: var(--primary); }
+    .search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 1rem; pointer-events: none; }
+
+    /* Main */
+    main { max-width: 720px; margin: 0 auto; padding: 16px 16px 80px; }
+
+    /* Result count */
+    .result-count { font-size: 0.85rem; color: var(--muted); margin-bottom: 10px; }
+
+    /* Term list */
+    .term-list { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: white; }
+
+    /* Term item */
+    .term-item { border-bottom: 1px solid #eee; }
+    .term-item:last-child { border-bottom: none; }
+
+    /* Term name button */
+    .term-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      padding: 10px 16px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      text-align: left;
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text);
+      min-height: 44px;
+      gap: 12px;
+      transition: background 0.15s;
+    }
+    .term-toggle:hover { background: #f9fafb; }
+    .term-toggle.open { background: #eff6ff; color: var(--primary); }
+    .term-toggle-text { flex: 1; display: flex; flex-direction: column; align-items: flex-start; }
+    .term-reading { font-size: 0.8rem; font-weight: 400; color: var(--muted); margin-left: 6px; }
+    .term-romaji { font-size: 12px; color: #888; font-weight: 400; }
+    .term-arrow { font-size: 0.75rem; color: var(--muted); flex-shrink: 0; transition: transform 0.2s; }
+    .term-toggle.open .term-arrow { transform: rotate(180deg); color: var(--primary); }
+
+    /* Summary panel */
+    .term-summary-panel { display: none; padding: 0 16px 16px; border-top: 1px solid #dbeafe; background: #f8faff; }
+    .term-summary-panel.open { display: block; }
+    .term-summary-text { font-size: 0.97rem; line-height: 1.75; color: #374151; padding-top: 14px; }
+
+    /* Detail toggle button */
+    .detail-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 14px;
+      padding: 10px 18px;
+      border: 2px solid var(--primary);
+      border-radius: 999px;
+      background: white;
+      color: var(--primary);
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      min-height: 44px;
+      transition: background 0.15s;
+    }
+    .detail-toggle:hover { background: #eff6ff; }
+    .detail-arrow { font-size: 0.7rem; transition: transform 0.2s; }
+    .detail-toggle.open .detail-arrow { transform: rotate(180deg); }
+
+    /* Detail panel */
+    .term-detail-panel { display: none; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+    .term-detail-panel.open { display: block; }
+    .term-detail-text { font-size: 0.95rem; line-height: 1.8; color: #374151; white-space: pre-wrap; }
+    .term-detail-image { width: 100%; border-radius: 8px; margin-top: 16px; display: block; }
+    .term-detail-caption { font-size: 0.82rem; color: var(--muted); text-align: center; margin-top: 6px; }
+
+    /* Empty state */
+    .empty { text-align: center; padding: 60px 20px; color: var(--muted); background: white; border: 1px solid var(--border); border-radius: var(--radius); }
+    .empty .icon { font-size: 2.5rem; margin-bottom: 12px; }
+
+    /* Images in detail panel */
+    .term-images-section { margin-top: 16px; }
+    .term-images-title { font-size: 0.78rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 10px; }
+    .term-image-item { margin-bottom: 16px; }
+    .term-image-item:last-child { margin-bottom: 0; }
+
+    /* Mobile: ≤375px — header wraps, short lang labels */
+    @media (max-width: 375px) {
+      .header-inner { flex-wrap: wrap; }
+      header h1 { font-size: 1rem; width: 100%; }
+      .lang-bar { width: 100%; margin-top: 2px; }
+      .lang-btn .full-text { display: none; }
+      .lang-btn .short-text { display: inline; }
+    }
+
+    @media (max-width: 600px) {
+      main { padding: 12px 12px 60px; }
+      .controls-bar { padding: 8px 12px; }
+      .term-toggle { padding: 10px 14px; }
+      .term-summary-panel { padding: 0 14px 14px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>用語集管理ツール</h1>
+  <p>Excelファイルからindex.htmlを生成します</p>
+</header>
+
+<main>
+  <!-- Progress indicator -->
+  <div class="progress-steps" id="progress-steps">
+    <div class="progress-step active" id="ps-1"><div class="ps-circle">1</div><div class="ps-label">読み込み</div></div>
+    <div class="progress-step" id="ps-2"><div class="ps-circle">2</div><div class="ps-label">データ確認</div></div>
+    <div class="progress-step" id="ps-3"><div class="ps-circle">3</div><div class="ps-label">検証</div></div>
+    <div class="progress-step" id="ps-4"><div class="ps-circle">4</div><div class="ps-label">生成</div></div>
+    <div class="progress-step" id="ps-5"><div class="ps-circle">5</div><div class="ps-label">完了</div></div>
+  </div>
+
+  <!-- 言語設定 -->
+  <div style="background:white;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:12px;padding:16px 20px;">
+    <div style="font-weight:700;font-size:1rem;margin-bottom:12px;">⚙ 言語設定</div>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <label for="lang3-select" style="font-weight:600;white-space:nowrap;font-size:0.95rem;">3番目の言語:</label>
+      <select id="lang3-select" onchange="saveLang3(this.value)" style="padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.95rem;min-height:38px;color:var(--text);">
+        <option value="VIE">VIE: ベトナム語（Tiếng Việt）</option>
+        <option value="FRE">FRE: フランス語（Français）</option>
+        <option value="NEP">NEP: ネパール語（नेपाली）</option>
+        <option value="SPA">SPA: スペイン語（Español）</option>
+        <option value="ARA">ARA: アラビア語（العربية）</option>
+        <option value="POR">POR: ポルトガル語（Português）</option>
+        <option value="CHN">CHN: 中国語（中文）</option>
+        <option value="LAO">LAO: ラオス語（ພາສາລາວ）</option>
+      </select>
+      <span style="font-size:0.85rem;color:var(--muted);">index.htmlの3番目のボタンになります</span>
+    </div>
+  </div>
+
+  <!-- STEP 1 -->
+  <div class="step-card" data-step="1" id="step-1">
+    <div class="step-header" onclick="toggleStep(1)">
+      <div class="step-number"><span class="num">1</span></div>
+      <div class="step-title">Excelファイルを選択・読み込む</div>
+      <div class="step-status" id="step-1-status"></div>
+    </div>
+    <div class="step-body">
+      <label class="file-drop" id="file-drop" for="file-input"
+        ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)">
+        <div class="icon">📂</div>
+        <div style="font-weight:600; font-size:1.05rem;">クリックまたはドラッグ&ドロップ</div>
+        <p>対応形式: .xlsx / .xls</p>
+        <input type="file" id="file-input" accept=".xlsx,.xls" onchange="handleFileSelect(event)">
+      </label>
+      <div id="file-name"></div>
+      <div id="step1-alert" style="margin-top:12px;"></div>
+      <div style="margin-top:16px;">
+        <button class="btn btn-primary btn-lg" id="btn-load" onclick="loadExcel()" disabled>
+          読み込む
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 2 -->
+  <div class="step-card locked" data-step="2" id="step-2">
+    <div class="step-header" onclick="toggleStep(2)">
+      <div class="step-number"><span class="num">2</span></div>
+      <div class="step-title">データ確認</div>
+      <div class="step-status" id="step-2-status">前のステップを完了してください</div>
+    </div>
+    <div class="step-body" id="step-2-body">
+      <div class="empty-state"><div class="icon">📊</div><div>データを読み込むと統計が表示されます</div></div>
+    </div>
+  </div>
+
+  <!-- STEP 3 -->
+  <div class="step-card locked" data-step="3" id="step-3">
+    <div class="step-header" onclick="toggleStep(3)">
+      <div class="step-number"><span class="num">3</span></div>
+      <div class="step-title">バリデーション</div>
+      <div class="step-status" id="step-3-status">前のステップを完了してください</div>
+    </div>
+    <div class="step-body" id="step-3-body">
+      <div class="empty-state"><div class="icon">✅</div><div>データを読み込むと検証結果が表示されます</div></div>
+    </div>
+  </div>
+
+  <!-- STEP 4 -->
+  <div class="step-card locked" data-step="4" id="step-4">
+    <div class="step-header" onclick="toggleStep(4)">
+      <div class="step-number"><span class="num">4</span></div>
+      <div class="step-title">index.htmlをプレビュー・生成・ダウンロード</div>
+      <div class="step-status" id="step-4-status">前のステップを完了してください</div>
+    </div>
+    <div class="step-body" id="step-4-body">
+      <div class="empty-state"><div class="icon">🌐</div><div>バリデーションを完了するとプレビューが表示されます</div></div>
+    </div>
+  </div>
+
+  <!-- STEP 5 -->
+  <div class="step-card locked" data-step="5" id="step-5">
+    <div class="step-header" onclick="toggleStep(5)">
+      <div class="step-number"><span class="num">5</span></div>
+      <div class="step-title">作業完了ガイド</div>
+      <div class="step-status" id="step-5-status">前のステップを完了してください</div>
+    </div>
+    <div class="step-body" id="step-5-body">
+      <div class="empty-state"><div class="icon">🚀</div><div>ダウンロード後に手順が表示されます</div></div>
+    </div>
+  </div>
+
+  <!-- EXPORT: index.html → Excel -->
+  <div class="step-card" id="export-card" style="margin-top:24px;">
+    <div class="step-header">
+      <div class="step-number"><span class="num" style="font-size:1.1rem;">↩</span></div>
+      <div class="step-title">index.html → Excel 書き出し</div>
+      <div class="step-status" id="export-status"></div>
+    </div>
+    <div class="step-body">
+      <p style="margin-bottom:16px;color:var(--muted);font-size:0.95rem;">生成済みの <code>index.html</code> に埋め込まれた用語データを、元の Excel 形式（<code>glossary.xlsx</code>）で書き出します。</p>
+      <label class="file-drop" id="export-drop" for="export-file-input"
+        ondragover="handleExportDragOver(event)" ondragleave="handleExportDragLeave(event)" ondrop="handleExportDrop(event)">
+        <div class="icon">📄</div>
+        <div style="font-weight:600;font-size:1.05rem;">クリックまたはドラッグ&ドロップ</div>
+        <p>対応形式: index.html</p>
+        <input type="file" id="export-file-input" accept=".html" onchange="handleExportFileSelect(event)">
+      </label>
+      <div id="export-file-name"></div>
+      <div style="margin-top:16px;">
+        <button class="btn btn-primary btn-lg" id="btn-export" onclick="exportToExcel()" disabled>Excel としてダウンロード</button>
+      </div>
+      <div id="export-result" style="margin-top:12px;"></div>
+    </div>
+  </div>
+</main>
+
+<script>
+// ============================================================
+// State
+// ============================================================
+let selectedFile = null;
+let workbook = null;
+let terms = [];       // 用語マスタ rows
+let categories = [];  // 分類マスタ rows
+let settings = {};    // 設定シート
+let validationErrors = [];
+let validationWarnings = [];
+let generatedHtml = '';
+
+// ============================================================
+// Lang3 config
+// ============================================================
+const LANG3_OPTIONS = [
+  { code: 'VIE', label: 'VIE: ベトナム語（Tiếng Việt）', langName: 'ベトナム語' },
+  { code: 'FRE', label: 'FRE: フランス語（Français）',  langName: 'フランス語' },
+  { code: 'NEP', label: 'NEP: ネパール語（नेपाली）',    langName: 'ネパール語' },
+  { code: 'SPA', label: 'SPA: スペイン語（Español）',   langName: 'スペイン語' },
+  { code: 'ARA', label: 'ARA: アラビア語（العربية）',   langName: 'アラビア語' },
+  { code: 'POR', label: 'POR: ポルトガル語（Português）', langName: 'ポルトガル語' },
+  { code: 'CHN', label: 'CHN: 中国語（中文）',           langName: '中国語' },
+  { code: 'LAO', label: 'LAO: ラオス語（ພາສາລາວ）',     langName: 'ラオス語' },
+];
+let lang3Code = localStorage.getItem('lang3_code') || 'FRE';
+
+// ============================================================
+// Step progress helpers
+// ============================================================
+function markStepDone(n, statusText) {
+  const card = document.getElementById('step-' + n);
+  card.classList.add('done');
+  card.classList.remove('locked');
+  document.getElementById('step-' + n + '-status').textContent = statusText || '完了';
+  const ps = document.getElementById('ps-' + n);
+  if (ps) { ps.classList.add('done'); ps.classList.remove('active'); }
+}
+function unlockStep(n, statusText) {
+  const card = document.getElementById('step-' + n);
+  card.classList.remove('locked');
+  document.getElementById('step-' + n + '-status').textContent = statusText || '';
+  const ps = document.getElementById('ps-' + n);
+  if (ps) { ps.classList.add('active'); }
+}
+function toggleStep(n) {
+  // Steps can always be viewed once unlocked; header click just for UX
+}
+
+// ============================================================
+// File handling
+// ============================================================
+function handleDragOver(e) {
+  e.preventDefault();
+  document.getElementById('file-drop').classList.add('drag-over');
+}
+function handleDragLeave(e) {
+  document.getElementById('file-drop').classList.remove('drag-over');
+}
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('file-drop').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) setFile(file);
+}
+function handleFileSelect(e) {
+  const file = e.target.files[0];
+  if (file) setFile(file);
+}
+function setFile(file) {
+  selectedFile = file;
+  document.getElementById('file-name').textContent = '選択中: ' + file.name;
+  document.getElementById('btn-load').disabled = false;
+  document.getElementById('step1-alert').innerHTML = '';
+}
+
+// ============================================================
+// STEP 1: Load Excel
+// ============================================================
+function loadExcel() {
+  if (!selectedFile) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = new Uint8Array(e.target.result);
+      workbook = XLSX.read(data, { type: 'array' });
+
+      // Parse sheets
+      const termSheet = getSheet('用語マスタ');
+      const catSheet = getSheet('分類マスタ');
+      const setSheet = getSheet('設定');
+
+      if (!termSheet) throw new Error('シート「用語マスタ」が見つかりません。');
+      if (!catSheet) throw new Error('シート「分類マスタ」が見つかりません。');
+
+      terms = parseTermSheet(termSheet);
+      categories = parseCatSheet(catSheet);
+      settings = setSheet ? parseSettings(setSheet) : {};
+
+      markStepDone(1, '読み込み完了');
+      renderStep2();
+      unlockStep(2, '');
+      runValidation();
+      renderStep3();
+      unlockStep(3, '');
+      renderStep4();
+      unlockStep(4, '');
+      unlockStep(5, '');
+
+    } catch(err) {
+      showStep1Alert('error', 'エラー: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(selectedFile);
+}
+
+function getSheet(name) {
+  if (!workbook.SheetNames.includes(name)) return null;
+  return workbook.Sheets[name];
+}
+
+function parseTermSheet(sheet) {
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+  if (rows.length < 2) return [];
+  return rows.slice(1).map((r, idx) => ({
+    rowNum: idx + 2,
+    id:       String(r[0] || '').trim(),
+    catCode:  String(r[1] || '').trim(),
+    nameJa:   String(r[2] || '').trim(),
+    readingJa:String(r[3] || '').trim(),
+    summaryJa:String(r[4] || '').trim(),
+    detailJa: String(r[5] || '').trim(),
+    nameFr:   String(r[6] || '').trim(),
+    summaryFr:String(r[7] || '').trim(),
+    detailFr: String(r[8] || '').trim(),
+    nameEn:   String(r[9] || '').trim(),
+    summaryEn:String(r[10] || '').trim(),
+    detailEn: String(r[11] || '').trim(),
+    image:    String(r[12] || '').trim(),
+    captionJa:String(r[13] || '').trim(),
+    captionFr:String(r[14] || '').trim(),
+    captionEn:String(r[15] || '').trim(),
+    published: String(r[16] || '').trim(),
+    name3:    String(r[17] || '').trim(),
+    summary3: String(r[18] || '').trim(),
+    detail3:  String(r[19] || '').trim(),
+    caption3: String(r[20] || '').trim(),
+  })).filter(r => r.id !== '' || r.nameJa !== '');
+}
+
+function parseCatSheet(sheet) {
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+  if (rows.length < 2) return [];
+  return rows.slice(1).map((r, idx) => ({
+    rowNum: idx + 2,
+    code:   String(r[0] || '').trim(),
+    nameJa: String(r[1] || '').trim(),
+    reading:String(r[2] || '').trim(),
+    nameFr: String(r[3] || '').trim(),
+    nameEn: String(r[4] || '').trim(),
+    order:  Number(r[5]) || 0,
+    name3:  String(r[6] || '').trim(),
+  })).filter(r => r.code !== '');
+}
+
+function parseSettings(sheet) {
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+  const obj = {};
+  rows.forEach(r => {
+    if (r[0]) obj[String(r[0]).trim()] = String(r[1] || '').trim();
+  });
+  // B4セル（行インデックス3・列インデックス1）= アプリ名（英語）
+  if (rows[3] && rows[3][1]) obj['_titleEn'] = String(rows[3][1]).trim();
+  return obj;
+}
+
+function showStep1Alert(type, msg) {
+  const cls = type === 'error' ? 'alert-error' : 'alert-success';
+  const icon = type === 'error' ? '❌' : '✅';
+  document.getElementById('step1-alert').innerHTML =
+    `<div class="alert ${cls}"><span class="alert-icon">${icon}</span><span>${esc(msg)}</span></div>`;
+}
+
+// ============================================================
+// STEP 2: Data summary
+// ============================================================
+function renderStep2() {
+  const published = terms.filter(t => t.published === '1' || t.published.toLowerCase() === 'true' || t.published === '公開');
+  const withImage = terms.filter(t => t.image).length;
+  const withLang3 = terms.filter(t => t.name3).length;
+  const withEn = terms.filter(t => t.nameEn).length;
+  const savedKey = loadApiKey();
+
+  const body = document.getElementById('step-2-body');
+  body.innerHTML = `
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-value">${terms.length}</div><div class="stat-label">総用語数</div></div>
+      <div class="stat-card"><div class="stat-value">${published.length}</div><div class="stat-label">公開フラグON</div></div>
+      <div class="stat-card"><div class="stat-value">${categories.length}</div><div class="stat-label">分類数</div></div>
+      <div class="stat-card"><div class="stat-value">${withImage}</div><div class="stat-label">画像あり</div></div>
+      <div class="stat-card"><div class="stat-value">${withLang3}</div><div class="stat-label">${lang3Code}あり</div></div>
+      <div class="stat-card"><div class="stat-value">${withEn}</div><div class="stat-label">英語あり</div></div>
+    </div>
+
+    <div class="translate-section">
+      <div class="section-label" style="margin-top:0;">AI翻訳（Anthropic API）</div>
+      <div class="api-key-row">
+        <label for="api-key-input">APIキー</label>
+        <input type="password" id="api-key-input" class="api-key-input"
+          placeholder="sk-ant-api03-..." autocomplete="off"
+          value="${esc(savedKey)}" oninput="onApiKeyInput()">
+      </div>
+      <div class="flex-row mt-16">
+        <button class="btn btn-primary" id="btn-translate-missing"
+          onclick="runTranslation('missing')" ${savedKey ? '' : 'disabled'}>空白のみ翻訳</button>
+        <button class="btn btn-outline" id="btn-translate-all"
+          onclick="runTranslation('all')" ${savedKey ? '' : 'disabled'}>全て翻訳（上書き）</button>
+      </div>
+      <div id="translate-progress" style="display:none;">
+        <div class="progress-wrap"><div class="progress-bar" id="progress-bar"></div></div>
+        <div class="progress-label" id="progress-label"></div>
+      </div>
+      <div id="translate-result" style="margin-top:16px;"></div>
+    </div>
+
+    <div class="section-label">分類マスタ一覧</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>分類コード</th><th>分類名(日本語)</th><th>分類名(${lang3Code})</th><th>分類名(英)</th><th>表示順</th></tr></thead>
+        <tbody>
+          ${categories.sort((a,b) => a.order - b.order).map(c => `
+            <tr>
+              <td><code>${esc(c.code)}</code></td>
+              <td>${esc(c.nameJa)}</td>
+              <td>${esc(c.name3)}</td>
+              <td>${esc(c.nameEn)}</td>
+              <td>${c.order}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="section-label">用語マスタ（先頭20件）</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>用語ID</th><th>分類コード</th><th>用語(日本語)</th><th>読み</th><th>公開</th></tr></thead>
+        <tbody>
+          ${terms.slice(0,20).map(t => `
+            <tr>
+              <td><code>${esc(t.id)}</code></td>
+              <td>${esc(t.catCode)}</td>
+              <td>${esc(t.nameJa)}</td>
+              <td>${esc(t.readingJa)}</td>
+              <td>${t.published === '1' || t.published.toLowerCase() === 'true' || t.published === '公開' ? '✅' : '—'}</td>
+            </tr>
+          `).join('')}
+          ${terms.length > 20 ? `<tr><td colspan="5" style="text-align:center;color:var(--color-muted);">… 他 ${terms.length - 20} 件</td></tr>` : ''}
+        </tbody>
+      </table>
+    </div>
+  `;
+  markStepDone(2, `用語 ${terms.length} 件・分類 ${categories.length} 件`);
+}
+
+// ============================================================
+// Translation (Anthropic API)
+// ============================================================
+
+function loadApiKey() { return localStorage.getItem('anthropic_api_key') || ''; }
+function saveApiKey(key) { localStorage.setItem('anthropic_api_key', key); }
+
+function saveLang3(code) {
+  lang3Code = code;
+  localStorage.setItem('lang3_code', code);
+}
+function getLang3Name() {
+  const opt = LANG3_OPTIONS.find(o => o.code === lang3Code);
+  return opt ? opt.langName : 'フランス語';
+}
+function initLang3Select() {
+  const sel = document.getElementById('lang3-select');
+  if (sel) sel.value = lang3Code;
+}
+
+function onApiKeyInput() {
+  const key = (document.getElementById('api-key-input') || {}).value || '';
+  const has = key.trim().length > 0;
+  const bm = document.getElementById('btn-translate-missing');
+  const ba = document.getElementById('btn-translate-all');
+  if (bm) bm.disabled = !has;
+  if (ba) ba.disabled = !has;
+}
+
+// 1件ずつ翻訳するシンプルなAPI呼び出し
+async function callAnthropicApi(srcText, lang, apiKey) {
+  const langName = lang === 'lang3' ? getLang3Name() : '英語';
+  const prompt = `以下の日本語テキストを${langName}に翻訳してください。専門用語は正確に翻訳し、翻訳結果のテキストのみ返答してください。\n\n${srcText}`;
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1000,
+      messages: [{ role: 'user', content: prompt }]
+    })
+  });
+  if (!resp.ok) {
+    const errBody = await resp.json().catch(() => ({}));
+    const detail = (errBody.error && errBody.error.message) ? errBody.error.message : JSON.stringify(errBody);
+    throw new Error('HTTP ' + resp.status + ' — ' + detail);
+  }
+  const data = await resp.json();
+  return data.content[0].text.trim();
+}
+
+// 翻訳タスクリストを構築（mode: 'missing' | 'all'）
+function buildTranslationTasks(mode) {
+  const tasks = [];
+
+  const l3 = lang3Code; // 第3言語コード（ラベル用）
+
+  // 分類マスタ
+  categories.forEach(function(c, idx) {
+    if (!c.nameJa) return;
+    if (mode === 'all' || !c.name3) tasks.push({ type: 'cat', idx: idx, field: 'name3', lang: 'lang3', src: c.nameJa, label: '分類「' + c.nameJa + '」→' + l3 });
+    if (mode === 'all' || !c.nameEn) tasks.push({ type: 'cat', idx: idx, field: 'nameEn', lang: 'en', src: c.nameJa, label: '分類「' + c.nameJa + '」→英' });
+  });
+
+  // 用語マスタ
+  terms.forEach(function(t, idx) {
+    if (!t.nameJa) return;
+    var lbl = '「' + t.nameJa + '」';
+    // 第3言語
+    if (mode === 'all' || !t.name3)    tasks.push({ type: 'term', idx: idx, field: 'name3',    lang: 'lang3', src: t.nameJa,    label: lbl + ' 用語→' + l3 });
+    if (mode === 'all' || !t.summary3) tasks.push({ type: 'term', idx: idx, field: 'summary3', lang: 'lang3', src: t.summaryJa, label: lbl + ' 概要→' + l3 });
+    if (t.detailJa  && (mode === 'all' || !t.detail3))  tasks.push({ type: 'term', idx: idx, field: 'detail3',  lang: 'lang3', src: t.detailJa,  label: lbl + ' 詳細→' + l3 });
+    if (t.captionJa && (mode === 'all' || !t.caption3)) tasks.push({ type: 'term', idx: idx, field: 'caption3', lang: 'lang3', src: t.captionJa, label: lbl + ' キャプ→' + l3 });
+    // 英語
+    if (mode === 'all' || !t.nameEn)    tasks.push({ type: 'term', idx: idx, field: 'nameEn',    lang: 'en', src: t.nameJa,    label: lbl + ' 用語→英' });
+    if (mode === 'all' || !t.summaryEn) tasks.push({ type: 'term', idx: idx, field: 'summaryEn', lang: 'en', src: t.summaryJa, label: lbl + ' 概要→英' });
+    if (t.detailJa  && (mode === 'all' || !t.detailEn))  tasks.push({ type: 'term', idx: idx, field: 'detailEn',  lang: 'en', src: t.detailJa,  label: lbl + ' 詳細→英' });
+    if (t.captionJa && (mode === 'all' || !t.captionEn)) tasks.push({ type: 'term', idx: idx, field: 'captionEn', lang: 'en', src: t.captionJa, label: lbl + ' キャプ→英' });
+  });
+
+  return tasks;
+}
+
+async function runTranslation(mode) {
+  if (mode === 'all') {
+    if (!confirm('既存の翻訳を全て上書きします。よろしいですか？')) return;
+  }
+
+  var apiKeyEl = document.getElementById('api-key-input');
+  var apiKey = apiKeyEl ? apiKeyEl.value.trim() : '';
+  if (!apiKey) {
+    alert('APIキーを入力してください。');
+    return;
+  }
+  saveApiKey(apiKey);
+
+  var tasks = buildTranslationTasks(mode);
+  if (tasks.length === 0) {
+    var resultEl = document.getElementById('translate-result');
+    if (resultEl) resultEl.innerHTML = '<div class="alert alert-success"><span class="alert-icon">✅</span><span>翻訳が必要な項目がありません。</span></div>';
+    return;
+  }
+
+  // ボタン無効化・進捗表示
+  var btnMissing = document.getElementById('btn-translate-missing');
+  var btnAll = document.getElementById('btn-translate-all');
+  if (btnMissing) btnMissing.disabled = true;
+  if (btnAll) btnAll.disabled = true;
+
+  var progressDiv = document.getElementById('translate-progress');
+  if (progressDiv) progressDiv.style.display = 'block';
+  var resultDiv = document.getElementById('translate-result');
+  if (resultDiv) resultDiv.innerHTML = '';
+
+  var pbEl = document.getElementById('progress-bar');
+  var plEl = document.getElementById('progress-label');
+
+  function updateProgress(done, total, label) {
+    var pct = total > 0 ? Math.round((done / total) * 100) : 0;
+    if (pbEl) pbEl.style.width = pct + '%';
+    if (plEl) plEl.textContent = label || ('翻訳中... ' + done + '/' + total + '件');
+  }
+  updateProgress(0, tasks.length);
+
+  var taskErrors = []; // {task, message}
+
+  // 1件ずつ順番に翻訳
+  for (var i = 0; i < tasks.length; i++) {
+    var task = tasks[i];
+    updateProgress(i + 1, tasks.length, '翻訳中... ' + (i + 1) + '/' + tasks.length + '件 — ' + task.label);
+
+    if (!task.src || !task.src.trim()) continue; // ソーステキストが空ならスキップ
+
+    try {
+      var translated = await callAnthropicApi(task.src, task.lang, apiKey);
+      if (task.type === 'term') {
+        terms[task.idx][task.field] = translated;
+      } else {
+        categories[task.idx][task.field] = translated;
+      }
+    } catch (e) {
+      taskErrors.push({ task: task, message: e.message });
+      if (resultDiv) {
+        resultDiv.innerHTML += '<div class="alert alert-error" style="margin-bottom:8px;"><span class="alert-icon">❌</span><span>' + esc(task.label + ': ' + e.message) + '</span></div>';
+      }
+    }
+
+    // レート制限対策: リクエスト間に1秒待機
+    if (i < tasks.length - 1) {
+      await new Promise(r => setTimeout(r, 1000));
+    }
+  }
+
+  // 完了
+  var doneLabel = taskErrors.length > 0 ? ('翻訳完了（エラー ' + taskErrors.length + ' 件）') : '翻訳完了 ✅';
+  updateProgress(tasks.length, tasks.length, doneLabel);
+  if (btnMissing) btnMissing.disabled = false;
+  if (btnAll) btnAll.disabled = false;
+
+  renderTranslationTable(taskErrors);
+}
+
+// ============================================================
+// Image management
+// ============================================================
+const termImages = {}; // termIdx -> [{filename, dataUrl}]
+
+function getTermImages(termIdx) {
+  if (!termImages[termIdx]) termImages[termIdx] = [];
+  return termImages[termIdx];
+}
+
+function openImagePicker(termIdx) {
+  const input = document.getElementById('img-input-' + termIdx);
+  if (input) input.click();
+}
+
+function handleImageFiles(termIdx, files) {
+  const imgs = getTermImages(termIdx);
+  const remaining = 5 - imgs.length;
+  if (remaining <= 0) { alert('画像は最大5枚までです。'); return; }
+  const toAdd = Array.from(files).slice(0, remaining);
+  let loaded = 0;
+  toAdd.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const ext = file.name.split('.').pop().toLowerCase();
+      const termId = String(terms[termIdx].id).padStart(3, '0');
+      const num = imgs.length + 1;
+      imgs.push({ filename: termId + '_' + num + '.' + ext, dataUrl: e.target.result });
+      updateTermImageField(termIdx);
+      if (++loaded === toAdd.length) renderImageThumbs(termIdx);
+    };
+    reader.readAsDataURL(file);
+  });
+  document.getElementById('img-input-' + termIdx).value = '';
+}
+
+function updateTermImageField(termIdx) {
+  const imgs = getTermImages(termIdx);
+  terms[termIdx].image = imgs.map(img => img.filename).join(',');
+}
+
+function removeImage(termIdx, imgIdx) {
+  const imgs = getTermImages(termIdx);
+  imgs.splice(imgIdx, 1);
+  const termId = String(terms[termIdx].id).padStart(3, '0');
+  imgs.forEach((img, i) => {
+    const ext = img.filename.split('.').pop();
+    img.filename = termId + '_' + (i + 1) + '.' + ext;
+  });
+  updateTermImageField(termIdx);
+  renderImageThumbs(termIdx);
+}
+
+function renderImageThumbs(termIdx) {
+  const row = document.getElementById('img-row-' + termIdx);
+  if (!row) return;
+  const imgs = getTermImages(termIdx);
+  row.innerHTML = imgs.map((img, j) =>
+    '<div class="img-thumb">' +
+    '<img src="' + img.dataUrl + '" alt="' + esc(img.filename) + '">' +
+    '<button class="img-thumb-del" onclick="removeImage(' + termIdx + ',' + j + ')" title="削除">×</button>' +
+    '<div class="img-thumb-name">' + esc(img.filename) + '</div>' +
+    '</div>'
+  ).join('');
+}
+
+function addDummyImages(termIdx) {
+  const imgs = getTermImages(termIdx);
+  const termId = String(terms[termIdx].id).padStart(3, '0');
+  const dummies = [
+    { color: '#4f86f7', label: 'サンプル画像1' },
+    { color: '#f7824f', label: 'サンプル画像2' }
+  ];
+  dummies.forEach(d => {
+    if (imgs.length >= 5) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = 200; canvas.height = 150;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = d.color;
+    ctx.fillRect(0, 0, 200, 150);
+    ctx.fillStyle = 'white';
+    ctx.font = 'bold 18px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(d.label, 100, 75);
+    const num = imgs.length + 1;
+    imgs.push({ filename: termId + '_' + num + '.png', dataUrl: canvas.toDataURL('image/png') });
+  });
+  updateTermImageField(termIdx);
+  renderImageThumbs(termIdx);
+}
+
+function renderTranslationTable(errorItems) {
+  const errorSet = new Set((errorItems || []).map(e => `${e.task.type}-${e.task.idx}-${e.task.lang}`));
+  const result = document.getElementById('translate-result');
+
+  const catRows = categories.map((c, i) => {
+    const l3Cls = errorSet.has(`cat-${i}-lang3`) ? 'cell-error' : '';
+    const enCls = errorSet.has(`cat-${i}-en`) ? 'cell-error' : '';
+    return `<tr>
+      <td><code>${esc(c.code)}</code></td>
+      <td>${esc(c.nameJa)}</td>
+      <td class="${l3Cls}"><span contenteditable="true" data-type="cat" data-idx="${i}" data-field="name3" oninput="updateTranslatedField(this)">${esc(c.name3)}</span></td>
+      <td class="${enCls}"><span contenteditable="true" data-type="cat" data-idx="${i}" data-field="nameEn" oninput="updateTranslatedField(this)">${esc(c.nameEn)}</span></td>
+    </tr>`;
+  }).join('');
+
+  const termRows = terms.map((t, i) => {
+    const editCell = (field, lang) => {
+      const cls = errorSet.has(`term-${i}-${lang}`) ? 'cell-error' : '';
+      return `<td class="${cls}"><span contenteditable="true" data-type="term" data-idx="${i}" data-field="${field}" oninput="updateTranslatedField(this)">${esc(t[field])}</span></td>`;
+    };
+    const dummyBtn = t.id === '001'
+      ? `<button class="btn btn-outline btn-sm" style="margin-top:6px;display:block;" onclick="addDummyImages(${i})">ダミー画像を追加</button>`
+      : '';
+    return `<tr>
+      <td><code>${esc(t.id)}</code></td>
+      <td>${esc(t.nameJa)}</td>
+      ${editCell('name3','lang3')}${editCell('summary3','lang3')}${editCell('detail3','lang3')}
+      ${editCell('nameEn','en')}${editCell('summaryEn','en')}${editCell('detailEn','en')}
+      <td style="min-width:130px;vertical-align:top;">
+        <div class="img-thumb-row" id="img-row-${i}"></div>
+        <input type="file" id="img-input-${i}" accept="image/jpeg,image/jpg,image/png,image/gif" multiple style="display:none" onchange="handleImageFiles(${i}, this.files)">
+        <button class="btn btn-outline btn-sm" onclick="openImagePicker(${i})">画像を追加</button>
+        ${dummyBtn}
+      </td>
+    </tr>`;
+  }).join('');
+
+  result.innerHTML += `
+    <div class="section-label" style="margin-top:16px;">分類マスタ 翻訳結果（クリックで編集可）</div>
+    <div class="translate-table-wrap" style="margin-bottom:16px;">
+      <table class="translate-table">
+        <thead><tr><th>分類コード</th><th>分類名(日本語)</th><th>分類名(${lang3Code}) ✏</th><th>分類名(英) ✏</th></tr></thead>
+        <tbody>${catRows}</tbody>
+      </table>
+    </div>
+    <div class="section-label">用語マスタ 翻訳結果（クリックで編集可）</div>
+    <div class="translate-table-wrap" style="margin-bottom:16px;">
+      <table class="translate-table">
+        <thead><tr>
+          <th>用語ID</th><th>用語(日本語)</th>
+          <th>用語(${lang3Code}) ✏</th><th>概要(${lang3Code}) ✏</th><th>詳細(${lang3Code}) ✏</th>
+          <th>用語(英) ✏</th><th>概要(英) ✏</th><th>詳細(英) ✏</th>
+          <th>画像</th>
+        </tr></thead>
+        <tbody>${termRows}</tbody>
+      </table>
+    </div>
+    <div class="flex-row">
+      <button class="btn btn-success btn-lg" onclick="generateFromTranslation()">翻訳結果でHTMLを生成・ダウンロード</button>
+    </div>
+  `;
+}
+
+function updateTranslatedField(el) {
+  const idx = parseInt(el.dataset.idx);
+  const field = el.dataset.field;
+  if (el.dataset.type === 'term') terms[idx][field] = el.textContent;
+  else if (el.dataset.type === 'cat') categories[idx][field] = el.textContent;
+}
+
+function generateFromTranslation() {
+  generatedHtml = buildIndexHtml();
+  const blob = new Blob([generatedHtml], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'index.html';
+  a.click();
+  URL.revokeObjectURL(url);
+  markStepDone(5, '');
+  renderStep5Final();
+}
+
+// ============================================================
+// STEP 3: Validation
+// ============================================================
+function runValidation() {
+  validationErrors = [];
+  validationWarnings = [];
+
+  // Error: 用語IDの重複
+  const idMap = {};
+  terms.forEach(t => {
+    if (!t.id) return;
+    idMap[t.id] = (idMap[t.id] || []);
+    idMap[t.id].push(t.rowNum);
+  });
+  Object.entries(idMap).forEach(([id, rows]) => {
+    if (rows.length > 1) {
+      validationErrors.push(`用語ID「${id}」が重複しています（行: ${rows.join(', ')}）`);
+    }
+  });
+
+  // Error: 必須項目の空白
+  terms.forEach(t => {
+    if (!t.id) validationErrors.push(`行 ${t.rowNum}: 用語IDが空です`);
+    if (!t.nameJa) validationErrors.push(`行 ${t.rowNum}: 用語(日本語)が空です`);
+    if (!t.summaryJa) validationErrors.push(`行 ${t.rowNum}: 概要(日本語)が空です`);
+  });
+
+  // Error: 分類コードの不一致
+  const catCodes = new Set(categories.map(c => c.code));
+  terms.forEach(t => {
+    if (t.catCode && !catCodes.has(t.catCode)) {
+      validationErrors.push(`行 ${t.rowNum}: 分類コード「${t.catCode}」が分類マスタに存在しません`);
+    }
+  });
+
+  // Warning: 第3言語・英語の翻訳が空
+  terms.forEach(t => {
+    if (!t.name3) validationWarnings.push(`行 ${t.rowNum}（${t.nameJa}）: 用語(${lang3Code})が空です`);
+    if (!t.nameEn) validationWarnings.push(`行 ${t.rowNum}（${t.nameJa}）: 用語(英)が空です`);
+  });
+}
+
+function renderStep3() {
+  const body = document.getElementById('step-3-body');
+  const eCount = validationErrors.length;
+  const wCount = validationWarnings.length;
+
+  let html = `<div class="validation-summary">`;
+  if (eCount === 0) {
+    html += `<span class="val-badge ok">✅ エラーなし</span>`;
+  } else {
+    html += `<span class="val-badge errors">❌ エラー ${eCount} 件</span>`;
+  }
+  if (wCount === 0) {
+    html += `<span class="val-badge ok">✅ 警告なし</span>`;
+  } else {
+    html += `<span class="val-badge warnings">⚠️ 警告 ${wCount} 件</span>`;
+  }
+  html += `</div>`;
+
+  if (eCount > 0) {
+    html += `<div class="section-label">エラー一覧（修正が必要）</div>`;
+    validationErrors.forEach(msg => {
+      html += `<div class="alert alert-error"><span class="alert-icon">❌</span><span>${esc(msg)}</span></div>`;
+    });
+  }
+  if (wCount > 0) {
+    html += `<div class="section-label">警告一覧（推奨）</div>`;
+    validationWarnings.slice(0, 50).forEach(msg => {
+      html += `<div class="alert alert-warning"><span class="alert-icon">⚠️</span><span>${esc(msg)}</span></div>`;
+    });
+    if (wCount > 50) {
+      html += `<div class="alert alert-info"><span class="alert-icon">ℹ️</span><span>… 他 ${wCount - 50} 件の警告があります</span></div>`;
+    }
+  }
+  if (eCount === 0 && wCount === 0) {
+    html += `<div class="alert alert-success"><span class="alert-icon">✅</span><span>問題は見つかりませんでした。次のステップへ進んでください。</span></div>`;
+  }
+
+  body.innerHTML = html;
+  const statusText = eCount > 0 ? `エラー ${eCount} 件` : (wCount > 0 ? `警告 ${wCount} 件` : '問題なし');
+  markStepDone(3, statusText);
+}
+
+// ============================================================
+// STEP 4: Generate & Preview
+// ============================================================
+function renderStep4() {
+  const body = document.getElementById('step-4-body');
+  const hasErrors = validationErrors.length > 0;
+
+  body.innerHTML = `
+    ${hasErrors ? `<div class="alert alert-warning"><span class="alert-icon">⚠️</span><span>エラーが ${validationErrors.length} 件あります。修正を推奨しますが、このまま生成することも可能です。</span></div>` : ''}
+    <div class="flex-row mt-16">
+      <button class="btn btn-primary btn-lg" onclick="generateAndPreview()">プレビュー生成</button>
+      <button class="btn btn-success btn-lg" id="btn-download" onclick="downloadHtml()" disabled>index.html をダウンロード</button>
+    </div>
+    <div id="preview-container" style="margin-top:16px;"></div>
+  `;
+  markStepDone(4, '');
+}
+
+function generateAndPreview() {
+  generatedHtml = buildIndexHtml();
+  const container = document.getElementById('preview-container');
+  container.innerHTML = `
+    <div class="section-label">プレビュー（実際の表示）</div>
+    <iframe id="preview-frame" srcdoc="" sandbox="allow-scripts allow-same-origin"></iframe>
+  `;
+  const frame = document.getElementById('preview-frame');
+  frame.srcdoc = generatedHtml;
+  document.getElementById('btn-download').disabled = false;
+  markStepDone(4, 'HTML生成済み');
+}
+
+function downloadHtml() {
+  if (!generatedHtml) return;
+  const blob = new Blob([generatedHtml], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'index.html';
+  a.click();
+  URL.revokeObjectURL(url);
+  markStepDone(5, '');
+  renderStep5Final();
+}
+
+// ============================================================
+// Build index.html
+// ============================================================
+function buildIndexHtml() {
+  const publishedTerms = terms.filter(t =>
+    t.published === '1' || t.published.toLowerCase() === 'true' || t.published === '公開' || t.published === ''
+  );
+  const catMap = {};
+  categories.forEach(c => { catMap[c.code] = c; });
+  const sortedCats = [...categories].sort((a,b) => a.order - b.order);
+
+  const termIndexMap = new Map(terms.map((t, i) => [t, i]));
+  const publishedTermsWithImages = publishedTerms.map(t => {
+    const originalIdx = termIndexMap.get(t);
+    const imgs = (originalIdx != null && termImages[originalIdx]) ? termImages[originalIdx] : [];
+    return Object.assign({}, t, { images: imgs.map(img => ({ filename: img.filename, dataUrl: img.dataUrl })) });
+  });
+  const termsJson = JSON.stringify(publishedTermsWithImages);
+  const catsJson = JSON.stringify(sortedCats);
+  const siteTitle = settings['_titleEn'] || settings['サイトタイトル'] || settings['title'] || '用語集';
+  const lang3CodeVal = lang3Code;
+
+  return `<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${esc(siteTitle)}</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --primary: #1a56db;
+      --bg: #f3f4f6;
+      --card: #fff;
+      --border: #e5e7eb;
+      --text: #111827;
+      --muted: #6b7280;
+      --radius: 10px;
+    }
+    body { font-family: 'Hiragino Kaku Gothic ProN','Noto Sans JP','Meiryo',sans-serif; font-size: 16px; line-height: 1.6; color: var(--text); background: var(--bg); }
+
+    /* Sticky header wrapper */
+    .site-header { position: sticky; top: 0; z-index: 100; }
+
+    /* Header */
+    header { background: var(--primary); color: white; padding: 16px 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
+    .header-inner { max-width: 720px; margin: 0 auto; }
+    header h1 { font-size: 1.25rem; font-weight: 700; }
+    .lang-bar { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+    .lang-btn { padding: 6px 18px; border-radius: 999px; border: 2px solid rgba(255,255,255,0.5); background: transparent; color: white; font-size: 0.9rem; font-weight: 600; cursor: pointer; min-height: 44px; transition: background 0.2s; }
+    .lang-btn.active { background: white; color: var(--primary); border-color: white; }
+    .lang-btn:hover:not(.active) { background: rgba(255,255,255,0.15); }
+
+    /* Controls bar */
+    .controls-bar { background: white; border-bottom: 1px solid var(--border); padding: 8px 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+    .controls-inner { max-width: 720px; margin: 0 auto; display: flex; gap: 8px; align-items: center; }
+    .filter-group { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+    .filter-all-btn { padding: 8px 16px; border-radius: 6px; border: 1px solid var(--border); background: white; font-size: 0.9rem; cursor: pointer; min-height: 44px; white-space: nowrap; font-weight: 600; transition: all 0.15s; }
+    .filter-all-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+    .filter-all-btn:hover:not(.active) { border-color: var(--primary); color: var(--primary); }
+    #categorySelect { display: inline-block; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: white; font-size: 0.9rem; cursor: pointer; min-height: 44px; min-width: 120px; color: var(--text); }
+    #categorySelect:focus { outline: 2px solid var(--primary); outline-offset: 0; }
+    .search-box { position: relative; flex: 1; min-width: 0; }
+    .search-box input { width: 100%; padding: 10px 16px 10px 40px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.95rem; outline: none; transition: border-color 0.2s; min-height: 44px; background: white; }
+    .search-box input:focus { border-color: var(--primary); }
+    .search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 1rem; pointer-events: none; }
+
+    /* Main */
+    main { max-width: 720px; margin: 0 auto; padding: 20px 16px 80px; }
+
+    /* Result count */
+    .result-count { font-size: 0.85rem; color: var(--muted); margin-bottom: 10px; }
+
+    /* Term list */
+    .term-list { display: flex; flex-direction: column; gap: 0; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: white; }
+
+    /* Term item */
+    .term-item { border-bottom: 1px solid var(--border); }
+    .term-item:last-child { border-bottom: none; }
+
+    /* Term name button */
+    .term-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      padding: 14px 16px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      text-align: left;
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text);
+      min-height: 44px;
+      gap: 12px;
+      transition: background 0.15s;
+    }
+    .term-toggle:hover { background: #f9fafb; }
+    .term-toggle.open { background: #eff6ff; color: var(--primary); }
+    .term-toggle-text { flex: 1; display: flex; flex-direction: column; align-items: flex-start; }
+    .term-reading { font-size: 0.8rem; font-weight: 400; color: var(--muted); margin-left: 6px; }
+    .term-romaji { font-size: 12px; color: #888; font-weight: 400; }
+    .term-arrow { font-size: 0.75rem; color: var(--muted); flex-shrink: 0; transition: transform 0.2s; }
+    .term-toggle.open .term-arrow { transform: rotate(180deg); color: var(--primary); }
+
+    /* Summary panel */
+    .term-summary-panel { display: none; padding: 0 16px 16px; border-top: 1px solid #dbeafe; background: #f8faff; }
+    .term-summary-panel.open { display: block; }
+    .term-summary-text { font-size: 0.97rem; line-height: 1.75; color: #374151; padding-top: 14px; }
+
+    /* Detail toggle button */
+    .detail-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 14px;
+      padding: 10px 18px;
+      border: 2px solid var(--primary);
+      border-radius: 999px;
+      background: white;
+      color: var(--primary);
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      min-height: 44px;
+      transition: background 0.15s;
+    }
+    .detail-toggle:hover { background: #eff6ff; }
+    .detail-arrow { font-size: 0.7rem; transition: transform 0.2s; }
+    .detail-toggle.open .detail-arrow { transform: rotate(180deg); }
+
+    /* Detail panel */
+    .term-detail-panel { display: none; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+    .term-detail-panel.open { display: block; }
+    .term-detail-text { font-size: 0.95rem; line-height: 1.8; color: #374151; white-space: pre-wrap; }
+    .term-detail-image { width: 100%; border-radius: 8px; margin-top: 16px; display: block; }
+    .term-detail-caption { font-size: 0.82rem; color: var(--muted); text-align: center; margin-top: 6px; }
+
+    /* Empty state */
+    .empty { text-align: center; padding: 60px 20px; color: var(--muted); background: white; border: 1px solid var(--border); border-radius: var(--radius); }
+    .empty .icon { font-size: 2.5rem; margin-bottom: 12px; }
+
+    /* Images in detail panel */
+    .term-images-section { margin-top: 16px; }
+    .term-images-title { font-size: 0.78rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 10px; }
+    .term-image-item { margin-bottom: 16px; }
+    .term-image-item:last-child { margin-bottom: 0; }
+    .term-detail-caption { font-size: 14px; color: var(--muted); text-align: center; margin-top: 6px; }
+
+    @media (max-width: 600px) {
+      header h1 { font-size: 1.1rem; }
+      main { padding: 16px 12px 60px; }
+      .term-toggle { padding: 13px 14px; }
+      .term-summary-panel { padding: 0 14px 14px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="site-header">
+  <header>
+    <div class="header-inner">
+      <h1>${esc(siteTitle)}</h1>
+      <div class="lang-bar">
+        <button class="lang-btn active" onclick="setLang('ja', this)">JPN</button>
+        <button class="lang-btn" onclick="setLang('en', this)">ENG</button>
+        <button class="lang-btn" onclick="setLang('lang3', this)">${esc(lang3CodeVal)}</button>
+      </div>
+    </div>
+  </header>
+  <div class="controls-bar">
+    <div class="controls-inner">
+      <div class="filter-group">
+        <button class="filter-all-btn active" id="btn-all" onclick="setCat('all')">All</button>
+        <select id="categorySelect" onchange="setCatFromSelect(this)">
+          <option value="">分野を選ぶ</option>
+        </select>
+      </div>
+      <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input type="search" id="search-input" placeholder="キーワードで検索..." oninput="renderTerms()" autocomplete="off">
+      </div>
+    </div>
+  </div>
+</div>
+
+<main>
+  <div class="result-count" id="result-count"></div>
+  <div id="term-list-wrap"></div>
+</main>
+
+<script>
+const TERMS = ${termsJson};
+const CATEGORIES = ${catsJson};
+const CAT_MAP = {};
+CATEGORIES.forEach(c => { CAT_MAP[c.code] = c; });
+
+let currentLang = 'ja';
+let currentCat = 'all';
+let openTermId = null;      // t.id of the currently open term (persists across renders)
+let openDetailOpen = false; // whether detail panel is also open (persists across renders)
+let _termIdByItemId = {};   // itemId → t.id, rebuilt each renderTerms
+
+function setLang(lang, btn) {
+  // Case 3: Same language clicked while something is open → close and reset to list
+  if (lang === currentLang && openTermId !== null) {
+    openTermId = null;
+    openDetailOpen = false;
+    renderCatFilter();
+    renderTerms();
+    return;
+  }
+  currentLang = lang;
+  document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const si = document.getElementById('search-input');
+  si.placeholder = lang === 'ja' ? 'キーワードで検索...' : 'Search...';
+  renderCatFilter();
+  renderTerms();
+}
+
+function catName(cat) {
+  if (!cat) return '';
+  if (currentLang === 'lang3') return cat.name3 || cat.nameEn || cat.nameJa;
+  if (currentLang === 'en') return cat.nameEn || cat.nameJa;
+  return cat.nameJa;
+}
+function termName(t) {
+  if (currentLang === 'lang3') return t.name3 || t.nameEn || t.nameJa;
+  if (currentLang === 'en') return t.nameEn || t.nameJa;
+  return t.nameJa;
+}
+function termSummary(t) {
+  if (currentLang === 'lang3') return t.summary3 || t.summaryEn || t.summaryJa;
+  if (currentLang === 'en') return t.summaryEn || t.summaryJa;
+  return t.summaryJa;
+}
+function termDetail(t) {
+  if (currentLang === 'lang3') return t.detail3 || t.detailEn || t.detailJa;
+  if (currentLang === 'en') return t.detailEn || t.detailJa;
+  return t.detailJa;
+}
+function termCaption(t) {
+  if (currentLang === 'lang3') return t.caption3 || t.captionEn || t.captionJa;
+  if (currentLang === 'en') return t.captionEn || t.captionJa;
+  return t.captionJa;
+}
+
+function kanaToRomaji(str) {
+  if (!str) return '';
+  const pairs = [
+    ['きゃ','kya'],['きゅ','kyu'],['きょ','kyo'],
+    ['しゃ','sha'],['しゅ','shu'],['しょ','sho'],
+    ['ちゃ','cha'],['ちゅ','chu'],['ちょ','cho'],
+    ['にゃ','nya'],['にゅ','nyu'],['にょ','nyo'],
+    ['ひゃ','hya'],['ひゅ','hyu'],['ひょ','hyo'],
+    ['みゃ','mya'],['みゅ','myu'],['みょ','myo'],
+    ['りゃ','rya'],['りゅ','ryu'],['りょ','ryo'],
+    ['ぎゃ','gya'],['ぎゅ','gyu'],['ぎょ','gyo'],
+    ['じゃ','ja'],['じゅ','ju'],['じょ','jo'],
+    ['あ','a'],['い','i'],['う','u'],['え','e'],['お','o'],
+    ['か','ka'],['き','ki'],['く','ku'],['け','ke'],['こ','ko'],
+    ['さ','sa'],['し','shi'],['す','su'],['せ','se'],['そ','so'],
+    ['た','ta'],['ち','chi'],['つ','tsu'],['て','te'],['と','to'],
+    ['な','na'],['に','ni'],['ぬ','nu'],['ね','ne'],['の','no'],
+    ['は','ha'],['ひ','hi'],['ふ','fu'],['へ','he'],['ほ','ho'],
+    ['ま','ma'],['み','mi'],['む','mu'],['め','me'],['も','mo'],
+    ['や','ya'],['ゆ','yu'],['よ','yo'],
+    ['ら','ra'],['り','ri'],['る','ru'],['れ','re'],['ろ','ro'],
+    ['わ','wa'],['を','wo'],['ん','n'],
+    ['が','ga'],['ぎ','gi'],['ぐ','gu'],['げ','ge'],['ご','go'],
+    ['ざ','za'],['じ','ji'],['ず','zu'],['ぜ','ze'],['ぞ','zo'],
+    ['だ','da'],['ぢ','di'],['づ','du'],['で','de'],['ど','do'],
+    ['ば','ba'],['び','bi'],['ぶ','bu'],['べ','be'],['ぼ','bo'],
+    ['ぱ','pa'],['ぴ','pi'],['ぷ','pu'],['ぺ','pe'],['ぽ','po'],
+    ['ぁ','a'],['ぃ','i'],['ぅ','u'],['ぇ','e'],['ぉ','o'],
+    ['ー','-'],
+  ];
+  let result = '';
+  let i = 0;
+  while (i < str.length) {
+    if (str[i] === 'っ') {
+      const rest = str.slice(i + 1);
+      let nextRomaji = '';
+      for (const [k, v] of pairs) {
+        if (rest.startsWith(k)) { nextRomaji = v; break; }
+      }
+      result += nextRomaji ? nextRomaji[0] : 't';
+      i++;
+      continue;
+    }
+    let matched = false;
+    for (const [k, v] of pairs) {
+      if (str.startsWith(k, i)) {
+        result += v;
+        i += k.length;
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) { result += str[i]; i++; }
+  }
+  return result;
+}
+
+function sortTerms(arr) {
+  return [...arr].sort((a, b) => {
+    if (currentLang === 'ja') {
+      const ra = a.readingJa || termName(a), rb = b.readingJa || termName(b);
+      return ra.localeCompare(rb, 'ja');
+    }
+    return termName(a).localeCompare(termName(b));
+  });
+}
+
+function renderCatFilter() {
+  const btnAll = document.getElementById('btn-all');
+  if (btnAll) btnAll.classList.toggle('active', currentCat === 'all');
+  const sel = document.getElementById('categorySelect');
+  if (sel) {
+    const placeholder = currentLang === 'ja' ? '\u5206\u91ce\u3092\u9078\u3076' : 'Choose category';
+    let html = '<option value="">' + placeholder + '</option>';
+    CATEGORIES.forEach(function(c) {
+      html += '<option value="' + esc2(c.code) + '"' + (currentCat === c.code ? ' selected' : '') + '>' + esc2(catName(c)) + '</option>';
+    });
+    sel.innerHTML = html;
+    console.log('\u30c9\u30ed\u30c3\u30d7\u30c0\u30a6\u30f3\u9078\u629e\u80a2\u6570:', sel.options.length);
+  }
+}
+
+function setCat(code) {
+  currentCat = code;
+  openTermId = null;
+  openDetailOpen = false;
+  renderCatFilter();
+  renderTerms();
+}
+
+function setCatFromSelect(sel) {
+  setCat(sel.value || 'all');
+}
+
+function renderTerms() {
+  const q = document.getElementById('search-input').value.toLowerCase();
+  let filtered = TERMS.filter(t => {
+    if (currentCat !== 'all' && t.catCode !== currentCat) return false;
+    if (!q) return true;
+    return (termName(t) + termSummary(t) + (t.readingJa || '') + (t.name3 || '') + (t.nameEn || '')).toLowerCase().includes(q);
+  });
+  const sorted = sortTerms(filtered);
+  const wrap = document.getElementById('term-list-wrap');
+  const countEl = document.getElementById('result-count');
+
+  const labels = { ja: '件の用語', en: ' term(s)', lang3: ' term(s)' };
+  countEl.textContent = sorted.length + (labels[currentLang] || '件');
+
+  if (sorted.length === 0) {
+    wrap.innerHTML = \`<div class="empty"><div class="icon">🔍</div><div>\${currentLang === 'ja' ? '該当する用語が見つかりません' : 'No terms found'}</div></div>\`;
+    return;
+  }
+
+  const detailLabel = currentLang === 'ja' ? '詳細を見る' : 'Show details';
+  const detailCloseLabel = currentLang === 'ja' ? '閉じる' : 'Close';
+
+  _termIdByItemId = {};
+  const items = sorted.map((t, i) => {
+    const itemId = 'item-' + i;
+    _termIdByItemId[itemId] = t.id;
+    const name = esc2(termName(t));
+    const romajiHtml = (currentLang === 'ja' && t.readingJa) ? \`<span class="term-romaji">\${esc2(kanaToRomaji(t.readingJa))}</span>\` : '';
+    const summary = esc2(termSummary(t));
+    const detail = termDetail(t);
+    const caption = termCaption(t);
+
+    let detailHtml = '';
+    const hasImages = t.images && t.images.length > 0;
+    if (detail || hasImages || t.image) {
+      const detailText = detail ? '<div class="term-detail-text">' + esc2(detail) + '</div>' : '';
+      const cap = esc2(caption);
+      let imgHtml = '';
+      if (hasImages) {
+        const imgTitle = currentLang === 'ja' ? '図・写真' : 'Figures and Photos';
+        imgHtml = '<div class="term-images-section"><div class="term-images-title">' + esc2(imgTitle) + '</div>';
+        t.images.forEach(function(img) {
+          imgHtml += '<div class="term-image-item"><img class="term-detail-image" src="' + img.dataUrl + '" alt="' + cap + '">';
+          if (cap) imgHtml += '<div class="term-detail-caption">' + cap + '</div>';
+          imgHtml += '</div>';
+        });
+        imgHtml += '</div>';
+      } else if (t.image) {
+        imgHtml = '<div class="term-image-item"><img class="term-detail-image" src="images/' + esc2(t.image) + '" alt="' + cap + '" loading="lazy">';
+        if (cap) imgHtml += '<div class="term-detail-caption">' + cap + '</div>';
+        imgHtml += '</div>';
+      }
+      detailHtml = \`
+        <button class="detail-toggle" id="dtbtn-\${itemId}" onclick="toggleDetail('\${itemId}')">
+          <span id="dtlabel-\${itemId}">\${detailLabel}</span>
+          <span class="detail-arrow">▼</span>
+        </button>
+        <div class="term-detail-panel" id="detail-\${itemId}">
+          \${detailText}
+          \${imgHtml}
+        </div>\`;
+    }
+
+    return \`<div class="term-item" id="\${itemId}">
+      <button class="term-toggle" id="toggle-\${itemId}" onclick="toggleSummary('\${itemId}')">
+        <span class="term-toggle-text">\${name}\${romajiHtml}</span>
+        <span class="term-arrow">▼</span>
+      </button>
+      <div class="term-summary-panel" id="summary-\${itemId}">
+        <div class="term-summary-text">\${summary}</div>
+        \${detailHtml}
+      </div>
+    </div>\`;
+  });
+
+  wrap.innerHTML = \`<div class="term-list">\${items.join('')}</div>\`;
+
+  // Restore open state after re-render (e.g. after language switch)
+  if (openTermId !== null) {
+    const restoredItemId = Object.keys(_termIdByItemId).find(k => _termIdByItemId[k] === openTermId);
+    if (restoredItemId) {
+      _applyOpenState(restoredItemId);
+    } else {
+      openTermId = null;
+      openDetailOpen = false;
+    }
+  }
+}
+
+function _applyOpenState(itemId) {
+  const toggleBtn = document.getElementById('toggle-' + itemId);
+  const summaryPanel = document.getElementById('summary-' + itemId);
+  if (!toggleBtn || !summaryPanel) return;
+  toggleBtn.classList.add('open');
+  summaryPanel.classList.add('open');
+  if (openDetailOpen) {
+    const btn = document.getElementById('dtbtn-' + itemId);
+    const panel = document.getElementById('detail-' + itemId);
+    const labelEl = document.getElementById('dtlabel-' + itemId);
+    const closeLabel = currentLang === 'ja' ? '\u9589\u3058\u308b' : 'Close';
+    if (btn && panel) {
+      btn.classList.add('open');
+      panel.classList.add('open');
+      if (labelEl) labelEl.textContent = closeLabel;
+    }
+  }
+  const el = document.getElementById(itemId);
+  if (el) el.scrollIntoView({ behavior: 'instant', block: 'center' });
+}
+
+function toggleSummary(itemId) {
+  const toggleBtn = document.getElementById('toggle-' + itemId);
+  const summaryPanel = document.getElementById('summary-' + itemId);
+
+  // Close previously open summary (and its detail) if a different term
+  if (openTermId !== null && _termIdByItemId[itemId] !== openTermId) {
+    const prevItemId = Object.keys(_termIdByItemId).find(k => _termIdByItemId[k] === openTermId);
+    if (prevItemId) {
+      const prevToggle = document.getElementById('toggle-' + prevItemId);
+      const prevPanel = document.getElementById('summary-' + prevItemId);
+      if (prevToggle) prevToggle.classList.remove('open');
+      if (prevPanel) prevPanel.classList.remove('open');
+      if (openDetailOpen) {
+        const prevDetailBtn = document.getElementById('dtbtn-' + prevItemId);
+        const prevDetail = document.getElementById('detail-' + prevItemId);
+        if (prevDetailBtn) prevDetailBtn.classList.remove('open');
+        if (prevDetail) prevDetail.classList.remove('open');
+      }
+    }
+    openDetailOpen = false;
+  }
+
+  const isOpen = summaryPanel.classList.toggle('open');
+  toggleBtn.classList.toggle('open', isOpen);
+  openTermId = isOpen ? _termIdByItemId[itemId] : null;
+
+  // If closing summary, also close detail
+  if (!isOpen && openDetailOpen) {
+    const detailBtn = document.getElementById('dtbtn-' + itemId);
+    const detailPanel = document.getElementById('detail-' + itemId);
+    if (detailBtn) detailBtn.classList.remove('open');
+    if (detailPanel) detailPanel.classList.remove('open');
+    openDetailOpen = false;
+  }
+
+  if (isOpen) {
+    setTimeout(() => toggleBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 10);
+  }
+}
+
+function toggleDetail(itemId) {
+  const btn = document.getElementById('dtbtn-' + itemId);
+  const panel = document.getElementById('detail-' + itemId);
+  const labelEl = document.getElementById('dtlabel-' + itemId);
+  const detailLabel = currentLang === 'ja' ? '詳細を見る' : 'Show details';
+  const detailCloseLabel = currentLang === 'ja' ? '閉じる' : 'Close';
+
+  const isOpen = panel.classList.toggle('open');
+  btn.classList.toggle('open', isOpen);
+  if (labelEl) labelEl.textContent = isOpen ? detailCloseLabel : detailLabel;
+  openDetailOpen = isOpen;
+}
+
+function esc2(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Init
+console.log('\u5206\u985e\u30c7\u30fc\u30bf:', CATEGORIES);
+renderCatFilter();
+renderTerms();
+<\/script>
+</body>
+</html>`;
+}
+
+// ============================================================
+// STEP 5: Completion guide
+// ============================================================
+function renderStep5Final() {
+  const body = document.getElementById('step-5-body');
+  body.innerHTML = `
+    <div class="alert alert-success" style="margin-bottom:24px;">
+      <span class="alert-icon">🎉</span>
+      <span>index.html の生成が完了しました！以下の手順でサイトを公開してください。</span>
+    </div>
+
+    <div class="guide-step">
+      <div class="guide-num">1</div>
+      <div class="guide-content">
+        <h3>ファイルを配置する</h3>
+        <p>ダウンロードした <code>index.html</code> を <code>docs/</code> フォルダに移動します。</p>
+        <pre>mv ~/Downloads/index.html docs/index.html</pre>
+        <p style="margin-top:8px;">画像ファイルがある場合は <code>docs/images/</code> フォルダに配置します。</p>
+        <pre>cp 画像ファイル docs/images/</pre>
+      </div>
+    </div>
+
+    <div class="guide-step">
+      <div class="guide-num">2</div>
+      <div class="guide-content">
+        <h3>ローカルで確認する</h3>
+        <p>ブラウザで <code>docs/index.html</code> を開いて表示を確認してください。</p>
+        <pre>open docs/index.html</pre>
+      </div>
+    </div>
+
+    <div class="guide-step">
+      <div class="guide-num">3</div>
+      <div class="guide-content">
+        <h3>Git でコミットする</h3>
+        <pre>cd ~/glossary-app
+git add docs/index.html docs/images/
+git commit -m "用語集を更新"
+git push origin main</pre>
+      </div>
+    </div>
+
+    <div class="guide-step">
+      <div class="guide-num">4</div>
+      <div class="guide-content">
+        <h3>GitHub Pages で公開する（初回のみ）</h3>
+        <p>リポジトリの <strong>Settings → Pages</strong> を開き、</p>
+        <ul style="margin-left:16px;margin-top:6px;">
+          <li>Source: <strong>Deploy from a branch</strong></li>
+          <li>Branch: <strong>main</strong> / <strong>docs</strong></li>
+        </ul>
+        <p style="margin-top:8px;">を設定して保存すると、数分後に公開されます。</p>
+      </div>
+    </div>
+
+    <div class="alert alert-info">
+      <span class="alert-icon">ℹ️</span>
+      <span>次回以降は STEP 1〜4 を繰り返すだけで更新できます。</span>
+    </div>
+  `;
+  markStepDone(5, '完了');
+}
+
+// ============================================================
+// EXPORT: index.html → Excel
+// ============================================================
+let exportFile = null;
+
+function handleExportDragOver(e) {
+  e.preventDefault();
+  document.getElementById('export-drop').classList.add('drag-over');
+}
+function handleExportDragLeave(e) {
+  document.getElementById('export-drop').classList.remove('drag-over');
+}
+function handleExportDrop(e) {
+  e.preventDefault();
+  document.getElementById('export-drop').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) setExportFile(file);
+}
+function handleExportFileSelect(e) {
+  const file = e.target.files[0];
+  if (file) setExportFile(file);
+}
+function setExportFile(file) {
+  exportFile = file;
+  document.getElementById('export-file-name').textContent = '選択中: ' + file.name;
+  document.getElementById('btn-export').disabled = false;
+  document.getElementById('export-result').innerHTML = '';
+  document.getElementById('export-status').textContent = '';
+}
+
+// JSON 抽出: `const VARNAME = [...];` or `{...};` を括弧カウントで確実に切り出す
+function extractJsonFromHtml(text, varName) {
+  const prefix = 'const ' + varName + ' = ';
+  const idx = text.indexOf(prefix);
+  if (idx === -1) return null;
+  const start = idx + prefix.length;
+  const firstChar = text[start];
+  const closeChar = firstChar === '[' ? ']' : '}';
+  let depth = 0, inStr = false, escape = false;
+  for (let i = start; i < text.length; i++) {
+    const c = text[i];
+    if (escape) { escape = false; continue; }
+    if (c === '\\' && inStr) { escape = true; continue; }
+    if (c === '"') { inStr = !inStr; continue; }
+    if (!inStr) {
+      if (c === firstChar) depth++;
+      else if (c === closeChar) { depth--; if (depth === 0) return text.slice(start, i + 1); }
+    }
+  }
+  return null;
+}
+
+async function exportToExcel() {
+  if (!exportFile) return;
+  const resultDiv = document.getElementById('export-result');
+  resultDiv.innerHTML = '<div class="alert alert-info"><span class="alert-icon">⏳</span><span>処理中...</span></div>';
+
+  try {
+    const text = await exportFile.text();
+
+    const termsJson = extractJsonFromHtml(text, 'TERMS');
+    const catsJson  = extractJsonFromHtml(text, 'CATEGORIES');
+    const titleMatch = text.match(/<title>(.*?)<\/title>/);
+
+    if (!termsJson) throw new Error('TERMS データが見つかりません。本ツールで生成された index.html を選択してください。');
+    if (!catsJson)  throw new Error('CATEGORIES データが見つかりません。');
+
+    const exportedTerms = JSON.parse(termsJson);
+    const exportedCats  = JSON.parse(catsJson);
+    const siteTitle     = titleMatch ? titleMatch[1].replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"') : '用語集';
+
+    const wb = XLSX.utils.book_new();
+
+    // ── 用語マスタ ──────────────────────────────
+    const termHeaders = [
+      'ID', '分類コード', '用語(日本語)', '読み',
+      '概要(日本語)', '詳細(日本語)',
+      '用語(FRE)', '概要(FRE)', '詳細(FRE)',
+      '用語(英語)', '概要(英語)', '詳細(英語)',
+      '画像',
+      'キャプション(日本語)', 'キャプション(FRE)', 'キャプション(英語)',
+      '公開',
+      '用語(第3言語)', '概要(第3言語)', '詳細(第3言語)', 'キャプション(第3言語)'
+    ];
+    const termRows = [
+      termHeaders,
+      ...exportedTerms.map(t => [
+        t.id        ?? '',
+        t.catCode   ?? '',
+        t.nameJa    ?? '',
+        t.readingJa ?? '',
+        t.summaryJa ?? '',
+        t.detailJa  ?? '',
+        t.nameFr    ?? '',
+        t.summaryFr ?? '',
+        t.detailFr  ?? '',
+        t.nameEn    ?? '',
+        t.summaryEn ?? '',
+        t.detailEn  ?? '',
+        t.image     || (t.images && t.images[0] ? t.images[0].filename : ''),
+        t.captionJa ?? '',
+        t.captionFr ?? '',
+        t.captionEn ?? '',
+        t.published !== undefined ? t.published : '1',
+        t.name3     ?? '',
+        t.summary3  ?? '',
+        t.detail3   ?? '',
+        t.caption3  ?? '',
+      ])
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(termRows), '用語マスタ');
+
+    // ── 分類マスタ ──────────────────────────────
+    const catHeaders = ['分類コード', '分類名(日本語)', '読み', '分類名(FRE)', '分類名(英語)', '表示順', '分類名(第3言語)'];
+    const catRows = [
+      catHeaders,
+      ...exportedCats.map(c => [
+        c.code    ?? '',
+        c.nameJa  ?? '',
+        c.reading ?? '',
+        c.nameFr  ?? '',
+        c.nameEn  ?? '',
+        c.order   ?? 0,
+        c.name3   ?? '',
+      ])
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(catRows), '分類マスタ');
+
+    // ── 設定 ────────────────────────────────────
+    const settingsRows = [['キー', '値'], ['サイトタイトル', siteTitle]];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(settingsRows), '設定');
+
+    XLSX.writeFile(wb, 'glossary.xlsx');
+
+    resultDiv.innerHTML = `<div class="alert alert-success"><span class="alert-icon">✅</span><span>用語 ${exportedTerms.length} 件・分類 ${exportedCats.length} 件を <code>glossary.xlsx</code> として書き出しました。</span></div>`;
+    document.getElementById('export-status').textContent = `完了（${exportedTerms.length} 件）`;
+
+  } catch (err) {
+    resultDiv.innerHTML = `<div class="alert alert-error"><span class="alert-icon">❌</span><span>エラー: ${esc(err.message)}</span></div>`;
+  }
+}
+
+// Init
+initLang3Select();
+
+// ============================================================
+// Utility
+// ============================================================
+function esc(str) {
+  if (!str) return '';
+
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+</script>
+</body>
+</html>

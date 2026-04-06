@@ -178,6 +178,13 @@
       </select>
       <span style="font-size:0.85rem;color:var(--muted);">index.htmlの3番目のボタンになります</span>
     </div>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:10px;">
+      <label for="lang4-select" style="font-weight:600;white-space:nowrap;font-size:0.95rem;">4番目の言語:</label>
+      <select id="lang4-select" onchange="saveLang4(this.value)" style="padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.95rem;min-height:38px;color:var(--text);">
+        <option value="">なし（使用しない）</option>
+      </select>
+      <span style="font-size:0.85rem;color:var(--muted);">選択しない場合はビューワーに4番目のボタンは表示されません</span>
+    </div>
   </div>
 
   <!-- STEP 1 -->
@@ -305,7 +312,12 @@ const LANG3_OPTIONS = [
   { code: 'LAO', label: 'LAO: ラオス語（ພາສາລາວ）',     langName: 'ラオス語' },
   { code: 'IND', label: 'IND: インドネシア語（Bahasa Indonesia）', langName: 'インドネシア語' },
 ];
+const LANG4_OPTIONS = [
+  { code: '',    label: 'なし（使用しない）',                       langName: '' },
+  ...LANG3_OPTIONS
+];
 let lang3Code = localStorage.getItem('lang3_code') || 'FRE';
+let lang4Code = localStorage.getItem('lang4_code') || '';
 
 // ============================================================
 // Step progress helpers
@@ -423,6 +435,10 @@ function parseTermSheet(sheet) {
     summary3: String(r[14] || '').trim(),
     detail3:  String(r[15] || '').trim(),
     caption3: String(r[16] || '').trim(),
+    name4:    String(r[17] || '').trim(),
+    summary4: String(r[18] || '').trim(),
+    detail4:  String(r[19] || '').trim(),
+    caption4: String(r[20] || '').trim(),
   })).filter(r => r.id !== '' || r.nameJa !== '');
 }
 
@@ -437,6 +453,7 @@ function parseCatSheet(sheet) {
     nameEn: String(r[3] || '').trim(),
     order:  Number(r[4]) || 0,
     name3:  String(r[5] || '').trim(),
+    name4:  String(r[6] || '').trim(),
   })).filter(r => r.code !== '');
 }
 
@@ -465,6 +482,7 @@ function renderStep2() {
   const published = terms.filter(t => t.published === '1' || t.published.toLowerCase() === 'true' || t.published === '公開');
   const withImage = terms.filter(t => t.image).length;
   const withLang3 = terms.filter(t => t.name3).length;
+  const withLang4 = terms.filter(t => t.name4).length;
   const withEn = terms.filter(t => t.nameEn).length;
   const savedKey = loadApiKey();
 
@@ -477,6 +495,7 @@ function renderStep2() {
       <div class="stat-card"><div class="stat-value">${withImage}</div><div class="stat-label">画像あり</div></div>
       <div class="stat-card"><div class="stat-value">${withLang3}</div><div class="stat-label">${lang3Code}あり</div></div>
       <div class="stat-card"><div class="stat-value">${withEn}</div><div class="stat-label">英語あり</div></div>
+      ${lang4Code ? `<div class="stat-card"><div class="stat-value">${withLang4}</div><div class="stat-label">${lang4Code}あり</div></div>` : ''}
     </div>
 
     <div class="translate-section">
@@ -562,6 +581,21 @@ function initLang3Select() {
   sel.value = lang3Code;
 }
 
+function saveLang4(code) {
+  lang4Code = code;
+  localStorage.setItem('lang4_code', code);
+}
+function getLang4Name() {
+  const opt = LANG4_OPTIONS.find(o => o.code === lang4Code);
+  return opt ? opt.langName : '';
+}
+function initLang4Select() {
+  const sel = document.getElementById('lang4-select');
+  if (!sel) return;
+  sel.innerHTML = LANG4_OPTIONS.map(o => `<option value="${o.code}">${o.label}</option>`).join('');
+  sel.value = lang4Code;
+}
+
 function onApiKeyInput() {
   const key = (document.getElementById('api-key-input') || {}).value || '';
   const has = key.trim().length > 0;
@@ -573,7 +607,7 @@ function onApiKeyInput() {
 
 // 1件ずつ翻訳するシンプルなAPI呼び出し
 async function callAnthropicApi(srcText, lang, apiKey) {
-  const langName = lang === 'lang3' ? getLang3Name() : '英語';
+  const langName = lang === 'lang3' ? getLang3Name() : lang === 'lang4' ? getLang4Name() : '英語';
   const prompt = `以下の日本語テキストを${langName}に翻訳してください。専門用語は正確に翻訳し、翻訳結果のテキストのみ返答してください。\n\n${srcText}`;
   const resp = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -603,12 +637,14 @@ function buildTranslationTasks(mode) {
   const tasks = [];
 
   const l3 = lang3Code; // 第3言語コード（ラベル用）
+  const l4 = lang4Code; // 第4言語コード（ラベル用）
 
   // 分類マスタ
   categories.forEach(function(c, idx) {
     if (!c.nameJa) return;
     if (mode === 'all' || !c.name3) tasks.push({ type: 'cat', idx: idx, field: 'name3', lang: 'lang3', src: c.nameJa, label: '分類「' + c.nameJa + '」→' + l3 });
     if (mode === 'all' || !c.nameEn) tasks.push({ type: 'cat', idx: idx, field: 'nameEn', lang: 'en', src: c.nameJa, label: '分類「' + c.nameJa + '」→英' });
+    if (l4 && (mode === 'all' || !c.name4)) tasks.push({ type: 'cat', idx: idx, field: 'name4', lang: 'lang4', src: c.nameJa, label: '分類「' + c.nameJa + '」→' + l4 });
   });
 
   // 用語マスタ
@@ -625,6 +661,13 @@ function buildTranslationTasks(mode) {
     if (mode === 'all' || !t.summaryEn) tasks.push({ type: 'term', idx: idx, field: 'summaryEn', lang: 'en', src: t.summaryJa, label: lbl + ' 概要→英' });
     if (t.detailJa  && (mode === 'all' || !t.detailEn))  tasks.push({ type: 'term', idx: idx, field: 'detailEn',  lang: 'en', src: t.detailJa,  label: lbl + ' 詳細→英' });
     if (t.captionJa && (mode === 'all' || !t.captionEn)) tasks.push({ type: 'term', idx: idx, field: 'captionEn', lang: 'en', src: t.captionJa, label: lbl + ' キャプ→英' });
+    // 第4言語
+    if (l4) {
+      if (mode === 'all' || !t.name4)    tasks.push({ type: 'term', idx: idx, field: 'name4',    lang: 'lang4', src: t.nameJa,    label: lbl + ' 用語→' + l4 });
+      if (mode === 'all' || !t.summary4) tasks.push({ type: 'term', idx: idx, field: 'summary4', lang: 'lang4', src: t.summaryJa, label: lbl + ' 概要→' + l4 });
+      if (t.detailJa  && (mode === 'all' || !t.detail4))  tasks.push({ type: 'term', idx: idx, field: 'detail4',  lang: 'lang4', src: t.detailJa,  label: lbl + ' 詳細→' + l4 });
+      if (t.captionJa && (mode === 'all' || !t.caption4)) tasks.push({ type: 'term', idx: idx, field: 'caption4', lang: 'lang4', src: t.captionJa, label: lbl + ' キャプ→' + l4 });
+    }
   });
 
   return tasks;
@@ -808,11 +851,14 @@ function renderTranslationTable(errorItems) {
   const catRows = categories.map((c, i) => {
     const l3Cls = errorSet.has(`cat-${i}-lang3`) ? 'cell-error' : '';
     const enCls = errorSet.has(`cat-${i}-en`) ? 'cell-error' : '';
+    const l4Cls = errorSet.has(`cat-${i}-lang4`) ? 'cell-error' : '';
+    const l4Cell = lang4Code ? `<td class="${l4Cls}"><span contenteditable="true" data-type="cat" data-idx="${i}" data-field="name4" oninput="updateTranslatedField(this)">${esc(c.name4)}</span></td>` : '';
     return `<tr>
       <td><code>${esc(c.code)}</code></td>
       <td>${esc(c.nameJa)}</td>
       <td class="${l3Cls}"><span contenteditable="true" data-type="cat" data-idx="${i}" data-field="name3" oninput="updateTranslatedField(this)">${esc(c.name3)}</span></td>
       <td class="${enCls}"><span contenteditable="true" data-type="cat" data-idx="${i}" data-field="nameEn" oninput="updateTranslatedField(this)">${esc(c.nameEn)}</span></td>
+      ${l4Cell}
     </tr>`;
   }).join('');
 
@@ -824,11 +870,15 @@ function renderTranslationTable(errorItems) {
     const dummyBtn = t.id === '001'
       ? `<button class="btn btn-outline btn-sm" style="margin-top:6px;display:block;" onclick="addDummyImages(${i})">ダミー画像を追加</button>`
       : '';
+    const l4Cells = lang4Code
+      ? `${editCell('name4','lang4')}${editCell('summary4','lang4')}${editCell('detail4','lang4')}`
+      : '';
     return `<tr>
       <td><code>${esc(t.id)}</code></td>
       <td>${esc(t.nameJa)}</td>
       ${editCell('name3','lang3')}${editCell('summary3','lang3')}${editCell('detail3','lang3')}
       ${editCell('nameEn','en')}${editCell('summaryEn','en')}${editCell('detailEn','en')}
+      ${l4Cells}
       <td style="min-width:130px;vertical-align:top;">
         <div class="img-thumb-row" id="img-row-${i}"></div>
         <input type="file" id="img-input-${i}" accept="image/jpeg,image/jpg,image/png,image/gif" multiple style="display:none" onchange="handleImageFiles(${i}, this.files)">
@@ -842,7 +892,7 @@ function renderTranslationTable(errorItems) {
     <div class="section-label" style="margin-top:16px;">分類マスタ 翻訳結果（クリックで編集可）</div>
     <div class="translate-table-wrap" style="margin-bottom:16px;">
       <table class="translate-table">
-        <thead><tr><th>分類コード</th><th>分類名(日本語)</th><th>分類名(${lang3Code}) ✏</th><th>分類名(英) ✏</th></tr></thead>
+        <thead><tr><th>分類コード</th><th>分類名(日本語)</th><th>分類名(${lang3Code}) ✏</th><th>分類名(英) ✏</th>${lang4Code ? `<th>分類名(${lang4Code}) ✏</th>` : ''}</tr></thead>
         <tbody>${catRows}</tbody>
       </table>
     </div>
@@ -853,6 +903,7 @@ function renderTranslationTable(errorItems) {
           <th>用語ID</th><th>用語(日本語)</th>
           <th>用語(${lang3Code}) ✏</th><th>概要(${lang3Code}) ✏</th><th>詳細(${lang3Code}) ✏</th>
           <th>用語(英) ✏</th><th>概要(英) ✏</th><th>詳細(英) ✏</th>
+          ${lang4Code ? `<th>用語(${lang4Code}) ✏</th><th>概要(${lang4Code}) ✏</th><th>詳細(${lang4Code}) ✏</th>` : ''}
           <th>画像</th>
         </tr></thead>
         <tbody>${termRows}</tbody>
@@ -919,10 +970,11 @@ function runValidation() {
     }
   });
 
-  // Warning: 第3言語・英語の翻訳が空
+  // Warning: 第3言語・英語・第4言語の翻訳が空
   terms.forEach(t => {
     if (!t.name3) validationWarnings.push(`行 ${t.rowNum}（${t.nameJa}）: 用語(${lang3Code})が空です`);
     if (!t.nameEn) validationWarnings.push(`行 ${t.rowNum}（${t.nameJa}）: 用語(英)が空です`);
+    if (lang4Code && !t.name4) validationWarnings.push(`行 ${t.rowNum}（${t.nameJa}）: 用語(${lang4Code})が空です`);
   });
 }
 
@@ -1033,6 +1085,8 @@ function buildIndexHtml() {
   const catsJson = JSON.stringify(sortedCats);
   const siteTitle = settings['_titleEn'] || settings['サイトタイトル'] || settings['title'] || '用語集';
   const lang3CodeVal = lang3Code;
+  const lang4CodeVal = lang4Code;
+  const lang4Button = lang4CodeVal ? `<button class="lang-btn" onclick="setLang('lang4', this)">${esc(lang4CodeVal)}</button>` : '';
 
   return `<!DOCTYPE html>
 <html lang="ja">
@@ -1180,6 +1234,7 @@ function buildIndexHtml() {
         <button class="lang-btn active" onclick="setLang('ja', this)">JPN</button>
         <button class="lang-btn" onclick="setLang('en', this)">ENG</button>
         <button class="lang-btn" onclick="setLang('lang3', this)">${esc(lang3CodeVal)}</button>
+        ${lang4Button}
       </div>
     </div>
   </header>
@@ -1207,6 +1262,7 @@ function buildIndexHtml() {
 <script>
 const TERMS = ${termsJson};
 const CATEGORIES = ${catsJson};
+const LANG4_CODE = '${esc(lang4CodeVal)}';
 const CAT_MAP = {};
 CATEGORIES.forEach(c => { CAT_MAP[c.code] = c; });
 
@@ -1236,26 +1292,31 @@ function setLang(lang, btn) {
 
 function catName(cat) {
   if (!cat) return '';
+  if (currentLang === 'lang4') return cat.name4 || cat.name3 || cat.nameEn || cat.nameJa;
   if (currentLang === 'lang3') return cat.name3 || cat.nameEn || cat.nameJa;
   if (currentLang === 'en') return cat.nameEn || cat.nameJa;
   return cat.nameJa;
 }
 function termName(t) {
+  if (currentLang === 'lang4') return t.name4 || t.name3 || t.nameEn || t.nameJa;
   if (currentLang === 'lang3') return t.name3 || t.nameEn || t.nameJa;
   if (currentLang === 'en') return t.nameEn || t.nameJa;
   return t.nameJa;
 }
 function termSummary(t) {
+  if (currentLang === 'lang4') return t.summary4 || t.summary3 || t.summaryEn || t.summaryJa;
   if (currentLang === 'lang3') return t.summary3 || t.summaryEn || t.summaryJa;
   if (currentLang === 'en') return t.summaryEn || t.summaryJa;
   return t.summaryJa;
 }
 function termDetail(t) {
+  if (currentLang === 'lang4') return t.detail4 || t.detail3 || t.detailEn || t.detailJa;
   if (currentLang === 'lang3') return t.detail3 || t.detailEn || t.detailJa;
   if (currentLang === 'en') return t.detailEn || t.detailJa;
   return t.detailJa;
 }
 function termCaption(t) {
+  if (currentLang === 'lang4') return t.caption4 || t.caption3 || t.captionEn || t.captionJa;
   if (currentLang === 'lang3') return t.caption3 || t.captionEn || t.captionJa;
   if (currentLang === 'en') return t.captionEn || t.captionJa;
   return t.captionJa;
@@ -1360,7 +1421,7 @@ function renderTerms() {
   let filtered = TERMS.filter(t => {
     if (currentCat !== 'all' && t.catCode !== currentCat) return false;
     if (!q) return true;
-    return (termName(t) + termSummary(t) + (t.readingJa || '') + (t.name3 || '') + (t.nameEn || '')).toLowerCase().includes(q);
+    return (termName(t) + termSummary(t) + (t.readingJa || '') + (t.name3 || '') + (t.nameEn || '') + (t.name4 || '')).toLowerCase().includes(q);
   });
   const sorted = sortTerms(filtered);
   const wrap = document.getElementById('term-list-wrap');
@@ -1676,7 +1737,8 @@ async function exportToExcel() {
       '画像',
       'キャプション(日本語)', 'キャプション(英語)',
       '公開',
-      '用語(第3言語)', '概要(第3言語)', '詳細(第3言語)', 'キャプション(第3言語)'
+      '用語(第3言語)', '概要(第3言語)', '詳細(第3言語)', 'キャプション(第3言語)',
+      '用語(第4言語)', '概要(第4言語)', '詳細(第4言語)', 'キャプション(第4言語)'
     ];
     const termRows = [
       termHeaders,
@@ -1698,12 +1760,16 @@ async function exportToExcel() {
         t.summary3  ?? '',
         t.detail3   ?? '',
         t.caption3  ?? '',
+        t.name4     ?? '',
+        t.summary4  ?? '',
+        t.detail4   ?? '',
+        t.caption4  ?? '',
       ])
     ];
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(termRows), '用語マスタ');
 
     // ── 分類マスタ ──────────────────────────────
-    const catHeaders = ['分類コード', '分類名(日本語)', '読み', '分類名(英語)', '表示順', '分類名(第3言語)'];
+    const catHeaders = ['分類コード', '分類名(日本語)', '読み', '分類名(英語)', '表示順', '分類名(第3言語)', '分類名(第4言語)'];
     const catRows = [
       catHeaders,
       ...exportedCats.map(c => [
@@ -1713,6 +1779,7 @@ async function exportToExcel() {
         c.nameEn  ?? '',
         c.order   ?? 0,
         c.name3   ?? '',
+        c.name4   ?? '',
       ])
     ];
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(catRows), '分類マスタ');
@@ -1733,6 +1800,7 @@ async function exportToExcel() {
 
 // Init
 initLang3Select();
+initLang4Select();
 
 // ============================================================
 // Utility

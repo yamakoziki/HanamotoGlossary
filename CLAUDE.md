@@ -43,9 +43,9 @@ cat package.json
 
 ### Excel Sheet Column Layout
 
-**用語マスタ** (col index): id(0), catCode(1), nameJa(2), readingJa(3), summaryJa(4), detailJa(5), nameEn(6), summaryEn(7), detailEn(8), image(9), captionJa(10), captionEn(11), published(12), name3(13), summary3(14), detail3(15), caption3(16)
+**用語マスタ** (col index): id(0), catCode(1), nameJa(2), readingJa(3), summaryJa(4), detailJa(5), nameEn(6), summaryEn(7), detailEn(8), image(9), captionJa(10), captionEn(11), published(12), name3(13), summary3(14), detail3(15), caption3(16), name4(17), summary4(18), detail4(19), caption4(20)
 
-**分類マスタ**: code(0), nameJa(1), reading(2), nameEn(3), order(4), name3(5)
+**分類マスタ**: code(0), nameJa(1), reading(2), nameEn(3), order(4), name3(5), name4(6)
 
 **設定**: key(0), value(1) — `サイトタイトル` sets the viewer page title (Japanese). Cell B4 (row index 3) is additionally read as `_titleEn` (English title) and takes priority over `サイトタイトル` in the generated HTML `<title>`.
 
@@ -56,7 +56,8 @@ cat package.json
 The app supports **3 languages** in the viewer:
 - **Japanese** (always): source language; always present
 - **English** (always): translated fields stored in `nameEn`, `summaryEn`, `detailEn`, `captionEn`
-- **3rd language** (user-selectable): controlled by `lang3Code` (persisted to `localStorage`); options defined in `LANG3_OPTIONS` (line 297). Currently: FRE, NEP, SPA, ARA, POR, CHN, VIE, LAO, IND. Changing the selection calls `saveLang3()` (line 549).
+- **3rd language** (user-selectable): controlled by `lang3Code` (persisted to `localStorage`); options defined in `LANG3_OPTIONS`. Currently: FRE, NEP, SPA, ARA, POR, CHN, VIE, LAO, IND.
+- **4th language** (optional, user-selectable): controlled by `lang4Code` (persisted to `localStorage`); `''` means disabled. Uses `LANG4_OPTIONS` (same list as lang3 with "なし" prepended). When disabled, no 4th button appears in the viewer and no lang4 columns are written to the translation table.
 
 ### Key Implementation Notes
 

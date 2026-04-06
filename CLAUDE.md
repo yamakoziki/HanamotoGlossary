@@ -55,7 +55,8 @@ cat package.json
 
 The app supports **3 languages** in the viewer:
 - **Japanese** (always): source language; always present
-- **3rd language** (user-selectable): controlled by `lang3Code` (persisted to `localStorage`); options defined in `LANG3_OPTIONS` (line 297). Currently: FRE, NEP, SPA, ARA, POR, CHN, VIE, LAO. Changing the selection calls `saveLang3()` (line 549).
+- **English** (always): translated fields stored in `nameEn`, `summaryEn`, `detailEn`, `captionEn`
+- **3rd language** (user-selectable): controlled by `lang3Code` (persisted to `localStorage`); options defined in `LANG3_OPTIONS` (line 297). Currently: FRE, NEP, SPA, ARA, POR, CHN, VIE, LAO, IND. Changing the selection calls `saveLang3()` (line 549).
 
 ### Key Implementation Notes
 

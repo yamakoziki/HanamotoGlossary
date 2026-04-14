@@ -497,24 +497,6 @@ function esc2(s) {
 // Init
 console.log('分類データ:', CATEGORIES);
 renderCatFilter();
-
-// URLパラメータ ?q=キーワード に対応
-(function() {
-  const params = new URLSearchParams(window.location.search);
-  const q = params.get('q');
-  if (q) {
-    const si = document.getElementById('search-input');
-    if (si) {
-      si.value = q;
-      // 少し待ってからスクロール
-      setTimeout(function() {
-        const first = document.querySelector('.term-card');
-        if (first) first.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 300);
-    }
-  }
-})();
-
 renderTerms();
 </script>
 </body>
